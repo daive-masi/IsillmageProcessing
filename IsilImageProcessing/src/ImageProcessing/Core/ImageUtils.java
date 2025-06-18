@@ -146,6 +146,6 @@ public class ImageUtils {
     }
     
     // --- Autres méthodes utilitaires pourront être ajoutées ici ---
-    // Par exemple: cloner une matrice int[][], etc.
+    // Par exemple : cloner une matrice int[][], etc.
 
 }

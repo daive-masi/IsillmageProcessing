@@ -100,71 +100,25 @@ public class Seuillage {
      * @technique Seuillage Automatique, Méthode d'Otsu. Section 1.6.4 des notes.
      */
     public static int[][] seuillageAutomatique(int[][] image) {
-        if (image == null || image.length == 0 || image[0].length == 0) return null;
-
-        // 1. Calculer l'histogramme normalisé (p(i))
-        int[] hist = Histogramme.Histogramme256(image);
-        if (hist == null) return null;
-
-        long nbPixelsTotal = 0;
-        for (int count : hist) {
-            nbPixelsTotal += count;
+        int[] histogramme = Histogramme.Histogramme256(image);
+        int seuil = 127;
+        int nouveauSeuil = -1;
+        while (seuil != nouveauSeuil) {
+            int sommeClasse1 = 0, effectifClasse1 = 0;
+            int sommeClasse2 = 0, effectifClasse2 = 0;
+            for (int i = 0; i <= seuil; i++) {
+                sommeClasse1 += i * histogramme[i];
+                effectifClasse1 += histogramme[i];
+            }
+            for (int i = seuil + 1; i < 256; i++) {
+                sommeClasse2 += i * histogramme[i];
+                effectifClasse2 += histogramme[i];
+            }
+            int moyenneClasse1 = (effectifClasse1 == 0) ? 0 : sommeClasse1 / effectifClasse1;
+            int moyenneClasse2 = (effectifClasse2 == 0) ? 0 : sommeClasse2 / effectifClasse2;
+            nouveauSeuil = seuil;
+            seuil = (moyenneClasse1 + moyenneClasse2) / 2;
         }
-        if (nbPixelsTotal == 0) return seuillageSimple(image, 127); // Image vide? Retourne seuil par défaut
-
-        double[] histNorm = new double[256];
-        for (int i = 0; i < 256; i++) {
-            histNorm[i] = (double) hist[i] / nbPixelsTotal;
-        }
-
-        // 2. Itérer sur tous les seuils possibles (k de 0 à 255) pour trouver le meilleur
-        double maxVarianceInterClasse = -1.0;
-        int seuilOptimal = 0;
-
-        for (int k = 0; k < 256; k++) {
-            // Calculer P1(k) : probabilité cumulée jusqu'à k (classe 1 = fond)
-            double p1_k = 0.0;
-            for (int i = 0; i <= k; i++) {
-                p1_k += histNorm[i];
-            }
-
-            // Calculer P2(k) : probabilité cumulée après k (classe 2 = objet)
-            double p2_k = 1.0 - p1_k; // Ou recalculer: sum(histNorm[i] for i=k+1 to 255)
-
-            // Si P1(k) ou P2(k) est proche de zéro, ce seuil n'est pas bon
-            // (tous les pixels seraient dans une seule classe)
-            if (p1_k < 1e-9 || p2_k < 1e-9) {
-                continue;
-            }
-
-            // Calculer m1(k) : moyenne des niveaux de gris jusqu'à k
-            double m1_k = 0.0;
-            for (int i = 0; i <= k; i++) {
-                m1_k += i * histNorm[i];
-            }
-            m1_k /= p1_k; // Normaliser par la proba de la classe
-
-            // Calculer m2(k) : moyenne des niveaux de gris après k
-            double m2_k = 0.0;
-            for (int i = k + 1; i < 256; i++) {
-                m2_k += i * histNorm[i];
-            }
-            m2_k /= p2_k; // Normaliser par la proba de la classe
-
-            // Calculer la variance inter-classe sigma_B^2(k)
-            // Formule: P1(k) * P2(k) * (m1(k) - m2(k))^2
-            double variance_k = p1_k * p2_k * Math.pow(m1_k - m2_k, 2);
-
-            // Mettre à jour le seuil optimal si la variance actuelle est meilleure
-            if (variance_k > maxVarianceInterClasse) {
-                maxVarianceInterClasse = variance_k;
-                seuilOptimal = k;
-            }
-        }
-
-        System.out.println("Application Seuillage Automatique (Otsu)... Seuil optimal trouvé = " + seuilOptimal);
-
-        // 3. Appliquer un seuillage simple avec le seuil optimal trouvé
-        return seuillageSimple(image, seuilOptimal);
+        return seuillageSimple(image, seuil);
     }
 }

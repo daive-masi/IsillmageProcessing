@@ -82,7 +82,8 @@ public class Histogramme
         long sommePixels = 0; // Utiliser long pour éviter dépassement sur grandes images
 
         for (int[] row : image) {
-            for (int pixel : row) {
+            for (int
+                    pixel : row) {
                 sommePixels += pixel;
             }
         }
