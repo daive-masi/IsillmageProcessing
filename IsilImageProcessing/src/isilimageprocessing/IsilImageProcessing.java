@@ -667,13 +667,11 @@ public class IsilImageProcessing extends javax.swing.JFrame implements ClicListe
     private void handleExercice1() {
         String operationName = "Exercice 1: Débruitage Poivre & Sel";
         String outputSubDir = BASE_RESULT_DIR + "ex1_debruitage/";
-        new File(outputSubDir).mkdirs(); // Crée le dossier s'il n'existe pas
-
+        new File(outputSubDir).mkdirs();
         JFileChooser choix = new JFileChooser();
         choix.setCurrentDirectory(new File("."));
         choix.setDialogTitle(operationName + " - Choisir une image bruitée");
         int retour = choix.showOpenDialog(this);
-
         if (retour == JFileChooser.APPROVE_OPTION) {
             File fichier = choix.getSelectedFile();
             if (fichier == null || !fichier.exists()) {
@@ -681,7 +679,6 @@ public class IsilImageProcessing extends javax.swing.JFrame implements ClicListe
                 return;
             }
             String outputFilename = outputSubDir + fichier.getName().replaceFirst("[.][^.]+$", "") + "_median_debruite.png";
-
             try {
                 CImage imageSourceBrute;
                 try { imageSourceBrute = new CImageNG(fichier); }
@@ -689,53 +686,57 @@ public class IsilImageProcessing extends javax.swing.JFrame implements ClicListe
                     try { imageSourceBrute = new CImageRGB(fichier); }
                     catch (Exception exRgb) { throw new IOException("Impossible de charger l'image.", exRgb); }
                 }
-
                 // Afficher l'originale
                 CImage imageAvantPourAffichage = (imageSourceBrute instanceof CImageRGB) ?
                         ImageUtils.matrixToCImageNG(ImageUtils.imageToGrayMatrix(imageSourceBrute)) : imageSourceBrute;
                 if (imageAvantPourAffichage != null) {
                     SwingUtilities.invokeLater(() -> new ResultViewerFrame(imageAvantPourAffichage, "Originale: " + fichier.getName()).display());
                 }
-
                 originalImageMatrix = ImageUtils.imageToGrayMatrix(imageSourceBrute);
                 updateRevenirOriginalMenuState();
                 int[][] inputMatrix = ImageUtils.imageToGrayMatrix(imageSourceBrute);
                 if (inputMatrix == null) throw new RuntimeException("Erreur conversion image.");
-
                 String tailleStr = JOptionPane.showInputDialog(this, "Taille voisinage filtre Médian (entier impair):", operationName, JOptionPane.QUESTION_MESSAGE);
                 if (tailleStr == null || tailleStr.trim().isEmpty()) return;
                 int tailleVoisinage = Integer.parseInt(tailleStr.trim());
                 if (tailleVoisinage <= 0 || tailleVoisinage % 2 == 0) throw new NumberFormatException("Taille invalide.");
 
-                System.out.println("Application Filtre Médian (taille=" + tailleVoisinage + ")...");
-                int[][] resultMatrix = MorphoComplexe.filtreMedian(inputMatrix, tailleVoisinage);
-                if (resultMatrix == null) throw new RuntimeException("Erreur filtre médian.");
+                // ---> DÉBUT DU CHRONOMÈTRE <---
+                System.out.println("Début du traitement [Filtre Médian]...");
+                long startTime = System.nanoTime();
 
+                // --- EXÉCUTION DE L'ALGORITHME ---
+                int[][] resultMatrix = MorphoComplexe.filtreMedian(inputMatrix, tailleVoisinage);
+
+                // ---> FIN DU CHRONOMÈTRE <---
+                long endTime = System.nanoTime();
+                double durationMilli = (endTime - startTime) / 1_000_000.0;
+                System.out.println("Fin du traitement. Durée [Filtre Médian]: " + String.format("%.3f", durationMilli) + " ms");
+
+                if (resultMatrix == null) throw new RuntimeException("Erreur filtre médian.");
                 CImageNG resultCImageNG = ImageUtils.matrixToCImageNG(resultMatrix);
                 if (resultCImageNG == null) throw new RuntimeException("Erreur conversion résultat.");
-
                 resultCImageNG.enregistreFormatPNG(new File(outputFilename));
                 System.out.println("Résultat sauvegardé: " + outputFilename);
-
-                updateImageDisplay(resultCImageNG); // Affichage principal
-                SwingUtilities.invokeLater(() -> new ResultViewerFrame(resultCImageNG, "Après Médian: " + fichier.getName()).display()); // Fenêtre résultat
-
-                JOptionPane.showMessageDialog(this, "Débruitage appliqué. Original et résultat affichés.", operationName, JOptionPane.INFORMATION_MESSAGE);
+                updateImageDisplay(resultCImageNG);
+                SwingUtilities.invokeLater(() -> new ResultViewerFrame(resultCImageNG, "Après Médian: " + fichier.getName()).display());
+                JOptionPane.showMessageDialog(this,
+                        "Débruitage appliqué.\n" +
+                                "Temps d'exécution: " + String.format("%.3f", durationMilli) + " ms",
+                        operationName, JOptionPane.INFORMATION_MESSAGE);
             } catch (Exception ex) { handleProcessingError(operationName, ex); }
         }
     }
 
-    //execice 2
-// DANS IsilImageProcessing.java
 
+    //execice 2
     private void handleExercice2() {
         String operationName = "Exercice 2: Égalisation Lena Couleur";
-        String filename = "lenaAEgaliser.jpg"; // Nom de fichier imposé
+        String filename = "lenaAEgaliser.jpg";
         String outputSubDir = BASE_RESULT_DIR + "ex2_egalisation_lena/";
-        new File(outputSubDir).mkdirs(); // Crée le dossier
+        new File(outputSubDir).mkdirs();
         String outputA_path = outputSubDir + "lena_egalisation_A_RGB.png";
         String outputB_path = outputSubDir + "lena_egalisation_B_Luminance.png";
-
         File inputFile = new File(filename);
         if (!inputFile.exists()) {
             JOptionPane.showMessageDialog(this,
@@ -743,176 +744,129 @@ public class IsilImageProcessing extends javax.swing.JFrame implements ClicListe
                     "Erreur Fichier", JOptionPane.ERROR_MESSAGE);
             return;
         }
-
         try {
-            // 1. Charger l'image couleur originale
+            // Charger l'image couleur originale
             System.out.println("Chargement de " + filename + "...");
-            CImageRGB imageRGB_Orig_PourMethodeA = new CImageRGB(inputFile); // Copie pour méthode A
-            CImageRGB imageRGB_Orig_PourMethodeB = new CImageRGB(inputFile); // Copie pour méthode B
-            CImageRGB imageRGB_Orig_PourAffichage = new CImageRGB(inputFile); // Copie pour affichage original
-
-            // Stocker l'original (version NG) pour pouvoir y revenir dans la fenêtre principale
+            CImageRGB imageRGB_Orig_PourMethodeA = new CImageRGB(inputFile);
+            CImageRGB imageRGB_Orig_PourMethodeB = new CImageRGB(inputFile);
+            CImageRGB imageRGB_Orig_PourAffichage = new CImageRGB(inputFile);
             originalImageMatrix = ImageUtils.imageToGrayMatrix(imageRGB_Orig_PourAffichage);
             updateRevenirOriginalMenuState();
-
-            // Afficher l'originale dans une nouvelle fenêtre
             final CImageRGB finalOriginalRGB = imageRGB_Orig_PourAffichage;
             SwingUtilities.invokeLater(() -> new ResultViewerFrame(finalOriginalRGB, "Originale: " + filename).display());
-
             int hauteur = imageRGB_Orig_PourMethodeA.getHauteur();
             int largeur = imageRGB_Orig_PourMethodeA.getLargeur();
 
             // --- Méthode (a): Égalisation RGB Indépendante ---
             System.out.println("Début Méthode (a): Égalisation RGB Indépendante...");
+            long startTimeA = System.nanoTime();
+
             int[][] rOrig_xy_A = new int[largeur][hauteur];
             int[][] gOrig_xy_A = new int[largeur][hauteur];
             int[][] bOrig_xy_A = new int[largeur][hauteur];
             imageRGB_Orig_PourMethodeA.getMatricesRGB(rOrig_xy_A, gOrig_xy_A, bOrig_xy_A);
-
             int[][] rOrig_yx_A = transposeMatrix(rOrig_xy_A);
             int[][] gOrig_yx_A = transposeMatrix(gOrig_xy_A);
             int[][] bOrig_yx_A = transposeMatrix(bOrig_xy_A);
-            if (rOrig_yx_A == null || gOrig_yx_A == null || bOrig_yx_A == null) throw new RuntimeException("Erreur de transposition (A).");
-
-            System.out.println("  Égalisation canal R (A)...");
             int[] lutR_A = Histogramme.creeCourbeTonaleEgalisation(rOrig_yx_A);
             int[][] rEq_yx_A = Histogramme.rehaussement(rOrig_yx_A, lutR_A);
-
-            System.out.println("  Égalisation canal G (A)...");
             int[] lutG_A = Histogramme.creeCourbeTonaleEgalisation(gOrig_yx_A);
             int[][] gEq_yx_A = Histogramme.rehaussement(gOrig_yx_A, lutG_A);
-
-            System.out.println("  Égalisation canal B (A)...");
             int[] lutB_A = Histogramme.creeCourbeTonaleEgalisation(bOrig_yx_A);
             int[][] bEq_yx_A = Histogramme.rehaussement(bOrig_yx_A, lutB_A);
-
-            if (rEq_yx_A == null || gEq_yx_A == null || bEq_yx_A == null) throw new RuntimeException("Erreur égalisation/rehaussement canal (A).");
-
             int[][] rEq_xy_A = transposeMatrix(rEq_yx_A);
             int[][] gEq_xy_A = transposeMatrix(gEq_yx_A);
             int[][] bEq_xy_A = transposeMatrix(bEq_yx_A);
-            if (rEq_xy_A == null || gEq_xy_A == null || bEq_xy_A == null) throw new RuntimeException("Erreur re-transposition (A).");
 
-            System.out.println("  Création image résultat A...");
+            long endTimeA = System.nanoTime();
+            double durationMilliA = (endTimeA - startTimeA) / 1_000_000.0;
+            System.out.println("Fin Méthode (a). Durée: " + String.format("%.3f", durationMilliA) + " ms");
+
             CImageRGB resultA_CImageRGB = new CImageRGB(rEq_xy_A, gEq_xy_A, bEq_xy_A);
             resultA_CImageRGB.enregistreFormatPNG(new File(outputA_path));
-            System.out.println("Résultat A sauvegardé: " + outputA_path);
-
-            // Afficher résultat A
-            final CImageRGB finalResultA_RGB = new CImageRGB(new File(outputA_path)); // Recharger pour être sûr de l'état
+            final CImageRGB finalResultA_RGB = new CImageRGB(new File(outputA_path));
             SwingUtilities.invokeLater(() -> new ResultViewerFrame(finalResultA_RGB, "Méthode A (RGB Indépendant)").display());
 
-
-            // --- Méthode (b): Égalisation Luminance + Application LUT Y aux canaux ---
+            // --- Méthode (b): Égalisation Luminance + Application LUT Y ---
             System.out.println("Début Méthode (b): Égalisation via Luminance...");
-            // Obtenir les matrices R, G, B originales pour la méthode B (au cas où A les aurait modifiées si pas de copie)
+            long startTimeB = System.nanoTime();
+
             int[][] rOrig_xy_B = new int[largeur][hauteur];
             int[][] gOrig_xy_B = new int[largeur][hauteur];
             int[][] bOrig_xy_B = new int[largeur][hauteur];
             imageRGB_Orig_PourMethodeB.getMatricesRGB(rOrig_xy_B, gOrig_xy_B, bOrig_xy_B);
-
             int[][] rOrig_yx_B = transposeMatrix(rOrig_xy_B);
             int[][] gOrig_yx_B = transposeMatrix(gOrig_xy_B);
             int[][] bOrig_yx_B = transposeMatrix(bOrig_xy_B);
-            if (rOrig_yx_B == null || gOrig_yx_B == null || bOrig_yx_B == null) throw new RuntimeException("Erreur de transposition (B).");
-
-            System.out.println("  Calcul Luminance (B)...");
             int[][] lum_yx_B = ImageUtils.imageToGrayMatrix(imageRGB_Orig_PourMethodeB);
-            if (lum_yx_B == null) throw new RuntimeException("Erreur calcul luminance (B).");
-
-            System.out.println("  Calcul LUT d'égalisation (Y) (B)...");
             int[] lutY_B = Histogramme.creeCourbeTonaleEgalisation(lum_yx_B);
-            if (lutY_B == null) throw new RuntimeException("Erreur création LUT luminance (B).");
-
-            System.out.println("  Application LUT(Y) sur R, G, B (B)...");
             int[][] rEqY_yx_B = Histogramme.rehaussement(rOrig_yx_B, lutY_B);
             int[][] gEqY_yx_B = Histogramme.rehaussement(gOrig_yx_B, lutY_B);
             int[][] bEqY_yx_B = Histogramme.rehaussement(bOrig_yx_B, lutY_B);
-            if (rEqY_yx_B == null || gEqY_yx_B == null || bEqY_yx_B == null) throw new RuntimeException("Erreur application LUT(Y) (B).");
-
             int[][] rEqY_xy_B = transposeMatrix(rEqY_yx_B);
             int[][] gEqY_xy_B = transposeMatrix(gEqY_yx_B);
             int[][] bEqY_xy_B = transposeMatrix(bEqY_yx_B);
-            if (rEqY_xy_B == null || gEqY_xy_B == null || bEqY_xy_B == null) throw new RuntimeException("Erreur re-transposition (B).");
 
-            System.out.println("  Création image résultat B...");
+            long endTimeB = System.nanoTime();
+            double durationMilliB = (endTimeB - startTimeB) / 1_000_000.0;
+            System.out.println("Fin Méthode (b). Durée: " + String.format("%.3f", durationMilliB) + " ms");
+
             CImageRGB resultB_CImageRGB = new CImageRGB(rEqY_xy_B, gEqY_xy_B, bEqY_xy_B);
             resultB_CImageRGB.enregistreFormatPNG(new File(outputB_path));
-            System.out.println("Résultat B sauvegardé: " + outputB_path);
-
-            // Afficher résultat B
-            final CImageRGB finalResultB_RGB = new CImageRGB(new File(outputB_path)); // Recharger pour être sûr de l'état
+            final CImageRGB finalResultB_RGB = new CImageRGB(new File(outputB_path));
             SwingUtilities.invokeLater(() -> new ResultViewerFrame(finalResultB_RGB, "Méthode B (Via Luminance)").display());
 
-            // Mettre à jour l'affichage principal (ex: avec le résultat B en NG)
             CImageNG displayImage = ImageUtils.matrixToCImageNG(ImageUtils.imageToGrayMatrix(resultB_CImageRGB));
             if (displayImage != null) updateImageDisplay(displayImage);
-
             JOptionPane.showMessageDialog(this,
                     "Égalisation terminée.\n" +
-                            "Résultat méthode (a) sauvegardé dans : " + outputA_path + "\n" +
-                            "Résultat méthode (b) sauvegardé dans : " + outputB_path + "\n\n" +
-                            "Originale et résultats affichés dans des fenêtres séparées.",
+                            "Méthode (a): " + String.format("%.3f", durationMilliA) + " ms\n" +
+                            "Méthode (b): " + String.format("%.3f", durationMilliB) + " ms\n" +
+                            "Résultats sauvegardés dans : " + outputA_path + ", " + outputB_path,
                     operationName, JOptionPane.INFORMATION_MESSAGE);
-
-        } catch (CImageRGBException | IOException exIO) { // Ajout CImageNGException
-            JOptionPane.showMessageDialog(this, "Erreur I/O ou CImage: " + exIO.getMessage(), "Erreur Fichier/Image", JOptionPane.ERROR_MESSAGE);
-            handleProcessingError(operationName, exIO);
-        } catch (Exception ex) {
-            handleProcessingError(operationName, ex);
-        }
+        } catch (Exception ex) { handleProcessingError(operationName, ex); }
     }
+
 
     //exercice 3
 
     private void handleExercice3() {
         String operationName = "Exercice 3: Segmentation Petits Pois";
-        String filename = "petitsPois.png"; // Nom de fichier imposé
+        String filename = "petitsPois.png";
         String outputSubDir = BASE_RESULT_DIR + "ex3_petits_pois/";
-        new File(outputSubDir).mkdirs(); // Crée le dossier
+        new File(outputSubDir).mkdirs();
         String outputRed_path = outputSubDir + "petitsPois_Rouges_seg.png";
         String outputBlue_path = outputSubDir + "petitsPois_Bleus_seg.png";
-
         File inputFile = new File(filename);
         if (!inputFile.exists()) {
             JOptionPane.showMessageDialog(this, "Le fichier '" + filename + "' est introuvable.", "Erreur Fichier", JOptionPane.ERROR_MESSAGE);
             return;
         }
-
         try {
-            // 1. Charger l'image couleur originale
             System.out.println("Chargement de " + filename + "...");
             CImageRGB imageRGB_Orig = new CImageRGB(inputFile);
-
-            originalImageMatrix = ImageUtils.imageToGrayMatrix(imageRGB_Orig); // Pour "revenir"
+            originalImageMatrix = ImageUtils.imageToGrayMatrix(imageRGB_Orig);
             updateRevenirOriginalMenuState();
-
-            // Afficher l'originale dans une nouvelle fenêtre
-            final CImageRGB finalOriginalRGB = new CImageRGB(inputFile); // Recharger pour affichage propre
+            final CImageRGB finalOriginalRGB = new CImageRGB(inputFile);
             SwingUtilities.invokeLater(() -> new ResultViewerFrame(finalOriginalRGB, "Originale: " + filename).display());
-
             int hauteur = imageRGB_Orig.getHauteur();
             int largeur = imageRGB_Orig.getLargeur();
-
-            // 2. Obtenir les matrices R, G, B [y][x]
             int[][] r_xy = new int[largeur][hauteur];
             int[][] g_xy = new int[largeur][hauteur];
             int[][] b_xy = new int[largeur][hauteur];
             imageRGB_Orig.getMatricesRGB(r_xy, g_xy, b_xy);
-
             int[][] r_yx = transposeMatrix(r_xy);
             int[][] g_yx = transposeMatrix(g_xy);
             int[][] b_yx = transposeMatrix(b_xy);
-            if (r_yx == null || g_yx == null || b_yx == null) throw new RuntimeException("Erreur de transposition des canaux RGB.");
 
-            // --- 3. Segmenter les POIS ROUGES ---
+            // --- Segmenter les POIS ROUGES ---
             System.out.println("Segmentation des pois rouges...");
-            int[][] redBinary = new int[hauteur][largeur];
-            // ---> CES SEUILS SONT CRITIQUES ET DOIVENT ÊTRE AJUSTÉS EMPIRIQUEMENT <---
-            int seuilRougeHaut_R = 200; // Pois rouges ont R très élevé
-            int seuilBleuBas_R = 100;   // et B relativement bas
-            int seuilVertBas_R = 100;   // et G relativement bas
+            long startTimeRed = System.nanoTime();
 
+            int[][] redBinary = new int[hauteur][largeur];
+            int seuilRougeHaut_R = 200;
+            int seuilBleuBas_R = 100;
+            int seuilVertBas_R = 100;
             for (int y = 0; y < hauteur; y++) {
                 for (int x = 0; x < largeur; x++) {
                     if (r_yx[y][x] > seuilRougeHaut_R && b_yx[y][x] < seuilBleuBas_R && g_yx[y][x] < seuilVertBas_R) {
@@ -922,38 +876,27 @@ public class IsilImageProcessing extends javax.swing.JFrame implements ClicListe
                     }
                 }
             }
-
-            // 4. Nettoyer l'image binaire des pois rouges par Reconstruction Géodésique
-            System.out.println("  Nettoyage morphologique par Reconstruction (Rouge)...");
-            // ---> AJUSTER CETTE TAILLE D'ÉLÉMENT STRUCTURANT <---
-            int tailleErosionMarqueur_R = 5; // Assez grand pour supprimer le bruit, mais pas les pois
+            int tailleErosionMarqueur_R = 5;
             int[][] marqueurRouge = MorphoElementaire.erosion(redBinary, tailleErosionMarqueur_R);
-            if (marqueurRouge == null) marqueurRouge = redBinary; // Fallback simple si érosion échoue
-
             int[][] redCleaned = MorphoComplexe.reconstructionGeodesique(marqueurRouge, redBinary);
-            if (redCleaned == null) redCleaned = redBinary; // Fallback
 
-            // Sauvegarder les pois rouges
+            long endTimeRed = System.nanoTime();
+            double durationMilliRed = (endTimeRed - startTimeRed) / 1_000_000.0;
+            System.out.println("Fin segmentation pois rouges. Durée: " + String.format("%.3f", durationMilliRed) + " ms");
+
             CImageNG redResultCImage = ImageUtils.matrixToCImageNG(redCleaned);
             if (redResultCImage != null) redResultCImage.enregistreFormatPNG(new File(outputRed_path));
-            else System.err.println("Erreur conversion/sauvegarde pois rouges.");
-            System.out.println("Résultat pois rouges sauvegardé: " + outputRed_path);
+            final CImageNG finalRedSeg = new CImageNG(new File(outputRed_path));
+            SwingUtilities.invokeLater(() -> new ResultViewerFrame(finalRedSeg, "Pois Rouges Segmentés").display());
 
-            // Afficher résultat pois rouges
-            if (redResultCImage != null) {
-                final CImageNG finalRedSeg = new CImageNG(new File(outputRed_path)); // Recharger
-                SwingUtilities.invokeLater(() -> new ResultViewerFrame(finalRedSeg, "Pois Rouges Segmentés").display());
-            }
-
-
-            // --- 6. Segmenter les POIS BLEUS ---
+            // --- Segmenter les POIS BLEUS ---
             System.out.println("Segmentation des pois bleus...");
-            int[][] blueBinary = new int[hauteur][largeur];
-            // ---> CES SEUILS SONT CRITIQUES ET DOIVENT ÊTRE AJUSTÉS EMPIRIQUEMENT <---
-            int seuilBleuHaut_B = 200;  // Pois bleus ont B très élevé
-            int seuilRougeBas_B = 100;  // et R relativement bas
-            int seuilVertBas_B = 100;   // et G aussi (pour différencier du vert potentiel)
+            long startTimeBlue = System.nanoTime();
 
+            int[][] blueBinary = new int[hauteur][largeur];
+            int seuilBleuHaut_B = 200;
+            int seuilRougeBas_B = 100;
+            int seuilVertBas_B = 100;
             for (int y = 0; y < hauteur; y++) {
                 for (int x = 0; x < largeur; x++) {
                     if (b_yx[y][x] > seuilBleuHaut_B && r_yx[y][x] < seuilRougeBas_B && g_yx[y][x] < seuilVertBas_B) {
@@ -963,187 +906,123 @@ public class IsilImageProcessing extends javax.swing.JFrame implements ClicListe
                     }
                 }
             }
-
-            // 7. Nettoyer l'image binaire des pois bleus par Reconstruction Géodésique
-            System.out.println("  Nettoyage morphologique par Reconstruction (Bleu)...");
-            // ---> AJUSTER CETTE TAILLE D'ÉLÉMENT STRUCTURANT <---
-            int tailleErosionMarqueur_B = 5; // Peut être la même ou différente de celle des rouges
+            int tailleErosionMarqueur_B = 5;
             int[][] marqueurBleu = MorphoElementaire.erosion(blueBinary, tailleErosionMarqueur_B);
-            if (marqueurBleu == null) marqueurBleu = blueBinary; // Fallback
-
             int[][] blueCleaned = MorphoComplexe.reconstructionGeodesique(marqueurBleu, blueBinary);
-            if (blueCleaned == null) blueCleaned = blueBinary; // Fallback
 
-            // Sauvegarder les pois bleus
+            long endTimeBlue = System.nanoTime();
+            double durationMilliBlue = (endTimeBlue - startTimeBlue) / 1_000_000.0;
+            System.out.println("Fin segmentation pois bleus. Durée: " + String.format("%.3f", durationMilliBlue) + " ms");
+
             CImageNG blueResultCImage = ImageUtils.matrixToCImageNG(blueCleaned);
             if (blueResultCImage != null) blueResultCImage.enregistreFormatPNG(new File(outputBlue_path));
-            else System.err.println("Erreur conversion/sauvegarde pois bleus.");
-            System.out.println("Résultat pois bleus sauvegardé: " + outputBlue_path);
+            final CImageNG finalBlueSeg = new CImageNG(new File(outputBlue_path));
+            SwingUtilities.invokeLater(() -> new ResultViewerFrame(finalBlueSeg, "Pois Bleus Segmentés").display());
 
-            // Afficher résultat pois bleus
-            if (blueResultCImage != null) {
-                final CImageNG finalBlueSeg = new CImageNG(new File(outputBlue_path)); // Recharger
-                SwingUtilities.invokeLater(() -> new ResultViewerFrame(finalBlueSeg, "Pois Bleus Segmentés").display());
-            }
-
-            // Mettre à jour l'affichage principal (ex: avec les pois rouges)
             if (redResultCImage != null) updateImageDisplay(redResultCImage);
-
             JOptionPane.showMessageDialog(this,
-                    "Segmentation petits pois terminée.\n" +
-                            "Originale et résultats sauvegardés et affichés.",
+                    "Segmentation terminée.\n" +
+                            "Pois rouges: " + String.format("%.3f", durationMilliRed) + " ms\n" +
+                            "Pois bleus: " + String.format("%.3f", durationMilliBlue) + " ms\n" +
+                            "Résultats sauvegardés.",
                     operationName, JOptionPane.INFORMATION_MESSAGE);
-
-        } catch (CImageRGBException | IOException exIO) {
-            JOptionPane.showMessageDialog(this, "Erreur I/O ou CImage: " + exIO.getMessage(), "Erreur Fichier/Image", JOptionPane.ERROR_MESSAGE);
-            handleProcessingError(operationName, exIO);
-        } catch (Exception ex) {
-            handleProcessingError(operationName, ex);
-        }
+        } catch (Exception ex) { handleProcessingError(operationName, ex); }
     }
+
 
     //Exercice 4 :
 // DANS IsilImageProcessing.java
 
     private void handleExercice4() {
         String operationName = "Exercice 4: Séparation Balanes";
-        String filename = "balanes.png"; // Nom de fichier imposé
+        String filename = "balanes.png";
         String outputSubDir = BASE_RESULT_DIR + "ex4_balanes/";
-        new File(outputSubDir).mkdirs(); // Crée le dossier
+        new File(outputSubDir).mkdirs();
         String outputGrandes_path = outputSubDir + "balanes_Grandes_NG.png";
         String outputPetites_path = outputSubDir + "balanes_Petites_NG.png";
-        String outputBinaireNettoye_path = outputSubDir + "balanes_Binaire_Nettoye_debug.png"; // Pour debug
-        String outputMarqueurGrandes_path = outputSubDir + "balanes_Marqueur_Grandes_debug.png"; // Pour debug
-        String outputGrandesBinaires_path = outputSubDir + "balanes_Grandes_Binaire_debug.png"; // Pour debug
-        String outputPetitesBinairesBruitees_path = outputSubDir + "balanes_Petites_Binaire_Bruitees_debug.png"; // Pour debug
-        String outputPetitesBinaires_path = outputSubDir + "balanes_Petites_Binaire_debug.png"; // Pour debug
-
-
         File inputFile = new File(filename);
         if (!inputFile.exists()) {
             JOptionPane.showMessageDialog(this, "Le fichier '" + filename + "' est introuvable.", "Erreur Fichier", JOptionPane.ERROR_MESSAGE);
             return;
         }
-
         try {
-            // 1. Charger l'image (sera convertie en NG)
             System.out.println("Chargement de " + filename + "...");
             CImage imageSource;
             try { imageSource = new CImageNG(inputFile); }
-            catch (Exception exNg) {
-                try { imageSource = new CImageRGB(inputFile); } // Fallback RGB
-                catch (Exception exRgb) { throw new IOException("Impossible de charger l'image.", exRgb); }
-            }
-
+            catch (Exception exNg) { imageSource = new CImageRGB(inputFile); }
             int[][] imageOriginaleNG = ImageUtils.imageToGrayMatrix(imageSource);
-            if (imageOriginaleNG == null) throw new RuntimeException("Erreur conversion image originale.");
-
-            originalImageMatrix = ImageUtils.cloneMatrix(imageOriginaleNG); // Stocker une copie pour "revenir"
+            originalImageMatrix = ImageUtils.cloneMatrix(imageOriginaleNG);
             updateRevenirOriginalMenuState();
-
-            // Afficher l'originale
             final CImageNG finalOriginalNG = ImageUtils.matrixToCImageNG(imageOriginaleNG);
-            if (finalOriginalNG != null) {
-                SwingUtilities.invokeLater(() -> new ResultViewerFrame(finalOriginalNG, "Originale: " + filename).display());
-            }
+            SwingUtilities.invokeLater(() -> new ResultViewerFrame(finalOriginalNG, "Originale: " + filename).display());
 
-            int hauteur = imageOriginaleNG.length;
-            int largeur = imageOriginaleNG[0].length;
-
-            // 2. Seuillage initial pour obtenir les formes binaires
-            System.out.println("  Seuillage automatique (Otsu)...");
+            // --- Seuillage initial ---
+            System.out.println("Seuillage automatique (Otsu)...");
+            long startTimeSeuil = System.nanoTime();
             int[][] imageBinaire = Seuillage.seuillageAutomatique(imageOriginaleNG);
-            if (imageBinaire == null) throw new RuntimeException("Erreur pendant le seuillage Otsu.");
+            long endTimeSeuil = System.nanoTime();
+            double durationMilliSeuil = (endTimeSeuil - startTimeSeuil) / 1_000_000.0;
+            System.out.println("Fin seuillage. Durée: " + String.format("%.3f", durationMilliSeuil) + " ms");
 
-            // Optionnel: Nettoyage léger de l'image binaire
+            // --- Nettoyage binaire ---
+            System.out.println("Nettoyage binaire (Fermeture)...");
+            long startTimeNettoyage = System.nanoTime();
             int tailleSE_nettoyageBinaire = 3;
-            System.out.println("  Nettoyage binaire (Fermeture " + tailleSE_nettoyageBinaire + "x" + tailleSE_nettoyageBinaire + ")...");
             int[][] imageBinaireNettoyee = MorphoElementaire.fermeture(imageBinaire, tailleSE_nettoyageBinaire);
-            if (imageBinaireNettoyee == null) imageBinaireNettoyee = imageBinaire; // Fallback
-            // Sauvegarder pour debug
-            CImageNG debugBinaireNettoye = ImageUtils.matrixToCImageNG(imageBinaireNettoyee);
-            if (debugBinaireNettoye != null) debugBinaireNettoye.enregistreFormatPNG(new File(outputBinaireNettoye_path));
+            long endTimeNettoyage = System.nanoTime();
+            double durationMilliNettoyage = (endTimeNettoyage - startTimeNettoyage) / 1_000_000.0;
+            System.out.println("Fin nettoyage. Durée: " + String.format("%.3f", durationMilliNettoyage) + " ms");
 
-
-            // 3. Créer un marqueur en érodant fortement pour isoler les centres des grandes
-            // ---> LA TAILLE DE L'ES EST CRUCIALE ET DOIT ETRE AJUSTEE <---
-            int tailleES_Marqueur = 21; // Point de départ, à ajuster !
-            System.out.println("  Création marqueur grandes balanes (Érosion " + tailleES_Marqueur + "x" + tailleES_Marqueur + ")...");
+            // --- Reconstruction des grandes balanes ---
+            System.out.println("Reconstruction des grandes balanes...");
+            long startTimeReconstruction = System.nanoTime();
+            int tailleES_Marqueur = 21;
             int[][] marqueurGrandes = MorphoElementaire.erosion(imageBinaireNettoyee, tailleES_Marqueur);
-            if (marqueurGrandes == null) throw new RuntimeException("Erreur pendant l'érosion pour marqueur.");
-            // Sauvegarder pour debug
-            CImageNG debugMarqueur = ImageUtils.matrixToCImageNG(marqueurGrandes);
-            if (debugMarqueur != null) debugMarqueur.enregistreFormatPNG(new File(outputMarqueurGrandes_path));
-
-            // 4. Reconstruire les GRANDES balanes à partir du marqueur sous le masque binaire nettoyé
-            System.out.println("  Reconstruction des grandes balanes...");
             int[][] grandesBalanesBinaires = MorphoComplexe.reconstructionGeodesique(marqueurGrandes, imageBinaireNettoyee);
-            if (grandesBalanesBinaires == null) throw new RuntimeException("Erreur pendant la reconstruction géodésique.");
-            // Sauvegarder pour debug
-            CImageNG debugGrandesBin = ImageUtils.matrixToCImageNG(grandesBalanesBinaires);
-            if (debugGrandesBin != null) debugGrandesBin.enregistreFormatPNG(new File(outputGrandesBinaires_path));
+            long endTimeReconstruction = System.nanoTime();
+            double durationMilliReconstruction = (endTimeReconstruction - startTimeReconstruction) / 1_000_000.0;
+            System.out.println("Fin reconstruction. Durée: " + String.format("%.3f", durationMilliReconstruction) + " ms");
 
-
-            // 5. Extraction des PETITES balanes par soustraction
-            System.out.println("  Extraction petites balanes (Soustraction)...");
+            // --- Extraction des petites balanes ---
+            System.out.println("Extraction petites balanes (Soustraction)...");
+            long startTimeSoustraction = System.nanoTime();
             int[][] petitesBalanesBinaires_Bruitees = soustraireImagesBinaires(imageBinaireNettoyee, grandesBalanesBinaires);
-            if (petitesBalanesBinaires_Bruitees == null) throw new RuntimeException("Erreur pendant la soustraction pour petites balanes.");
-            // Sauvegarder pour debug
-            CImageNG debugPetitesBinBruitees = ImageUtils.matrixToCImageNG(petitesBalanesBinaires_Bruitees);
-            if (debugPetitesBinBruitees != null) debugPetitesBinBruitees.enregistreFormatPNG(new File(outputPetitesBinairesBruitees_path));
-
-            // 5b. Nettoyer l'image des petites balanes (pour enlever le bruit)
-            // ---> AJUSTER CETTE TAILLE D'ÉLÉMENT STRUCTURANT <---
             int tailleES_NettoyagePetites = 5;
-            System.out.println("  Nettoyage des petites balanes (Ouverture " + tailleES_NettoyagePetites + "x" + tailleES_NettoyagePetites + ")...");
             int[][] petitesBalanesBinaires = MorphoElementaire.ouverture(petitesBalanesBinaires_Bruitees, tailleES_NettoyagePetites);
-            if (petitesBalanesBinaires == null) petitesBalanesBinaires = petitesBalanesBinaires_Bruitees; // Fallback
-            // Sauvegarder pour debug
-            CImageNG debugPetitesBin = ImageUtils.matrixToCImageNG(petitesBalanesBinaires);
-            if (debugPetitesBin != null) debugPetitesBin.enregistreFormatPNG(new File(outputPetitesBinaires_path));
+            long endTimeSoustraction = System.nanoTime();
+            double durationMilliSoustraction = (endTimeSoustraction - startTimeSoustraction) / 1_000_000.0;
+            System.out.println("Fin extraction petites. Durée: " + String.format("%.3f", durationMilliSoustraction) + " ms");
 
-            // 6. Création des images finales en NIVEAUX DE GRIS
-            System.out.println("  Récupération niveaux de gris...");
+            // --- Création des images finales ---
+            System.out.println("Création images finales NG...");
+            long startTimeFinal = System.nanoTime();
             int[][] grandesBalanesNG_final = appliquerMasqueNG(imageOriginaleNG, grandesBalanesBinaires);
             int[][] petitesBalanesNG_final = appliquerMasqueNG(imageOriginaleNG, petitesBalanesBinaires);
-            if (grandesBalanesNG_final == null || petitesBalanesNG_final == null) throw new RuntimeException("Erreur pendant l'application des masques NG.");
+            long endTimeFinal = System.nanoTime();
+            double durationMilliFinal = (endTimeFinal - startTimeFinal) / 1_000_000.0;
+            System.out.println("Fin création images. Durée: " + String.format("%.3f", durationMilliFinal) + " ms");
 
-
-            // 7. Sauvegarder les résultats finaux
             CImageNG grandesResultCImage = ImageUtils.matrixToCImageNG(grandesBalanesNG_final);
-            if (grandesResultCImage != null) grandesResultCImage.enregistreFormatPNG(new File(outputGrandes_path));
-            else System.err.println("Erreur conversion/sauvegarde grandes balanes.");
-
             CImageNG petitesResultCImage = ImageUtils.matrixToCImageNG(petitesBalanesNG_final);
-            if (petitesResultCImage != null) petitesResultCImage.enregistreFormatPNG(new File(outputPetites_path));
-            else System.err.println("Erreur conversion/sauvegarde petites balanes.");
-            System.out.println("Résultats NG sauvegardés: " + outputGrandes_path + ", " + outputPetites_path);
-
-            // 8. Afficher les résultats finaux NG dans des fenêtres séparées
-            if (grandesResultCImage != null) {
-                final CImageNG finalGrandes = ImageUtils.matrixToCImageNG(grandesBalanesNG_final); // Re-convertir matrice pour affichage propre
-                SwingUtilities.invokeLater(() -> new ResultViewerFrame(finalGrandes, "Grandes Balanes (NG)").display());
-            }
-            if (petitesResultCImage != null) {
-                final CImageNG finalPetites = ImageUtils.matrixToCImageNG(petitesBalanesNG_final); // Re-convertir matrice
-                SwingUtilities.invokeLater(() -> new ResultViewerFrame(finalPetites, "Petites Balanes (NG)").display());
-            }
-
-            // Mettre à jour l'affichage principal (ex: avec les grandes balanes)
+            grandesResultCImage.enregistreFormatPNG(new File(outputGrandes_path));
+            petitesResultCImage.enregistreFormatPNG(new File(outputPetites_path));
+            final CImageNG finalGrandes = ImageUtils.matrixToCImageNG(grandesBalanesNG_final);
+            final CImageNG finalPetites = ImageUtils.matrixToCImageNG(petitesBalanesNG_final);
+            SwingUtilities.invokeLater(() -> new ResultViewerFrame(finalGrandes, "Grandes Balanes (NG)").display());
+            SwingUtilities.invokeLater(() -> new ResultViewerFrame(finalPetites, "Petites Balanes (NG)").display());
             if (grandesResultCImage != null) updateImageDisplay(grandesResultCImage);
-
             JOptionPane.showMessageDialog(this,
                     "Séparation terminée.\n" +
-                            "Originale et résultats (NG) sauvegardés et affichés.",
+                            "Seuillage: " + String.format("%.3f", durationMilliSeuil) + " ms\n" +
+                            "Nettoyage: " + String.format("%.3f", durationMilliNettoyage) + " ms\n" +
+                            "Reconstruction: " + String.format("%.3f", durationMilliReconstruction) + " ms\n" +
+                            "Extraction petites: " + String.format("%.3f", durationMilliSoustraction) + " ms\n" +
+                            "Création images: " + String.format("%.3f", durationMilliFinal) + " ms\n" +
+                            "Résultats sauvegardés.",
                     operationName, JOptionPane.INFORMATION_MESSAGE);
-
-        } catch (IOException exIO) { // Ajout CImageNGException et IOException
-            JOptionPane.showMessageDialog(this, "Erreur I/O ou CImage: " + exIO.getMessage(), "Erreur Fichier/Image", JOptionPane.ERROR_MESSAGE);
-            handleProcessingError(operationName, exIO);
-        } catch (Exception ex) {
-            handleProcessingError(operationName, ex);
-        }
+        } catch (Exception ex) { handleProcessingError(operationName, ex); }
     }
+
 
     //Exercice 5
 // DANS IsilImageProcessing.java
@@ -1189,7 +1068,7 @@ public class IsilImageProcessing extends javax.swing.JFrame implements ClicListe
 
             // 2. Estimer le fond par Ouverture morphologique
             // --> AJUSTER CETTE TAILLE D'ES (doit être > plus grand outil) <--
-            int tailleES_Fond = 21; // Point de départ (ex: 51, 71, 101...)
+            int tailleES_Fond = 71; // Point de départ (ex: 51, 71, 101...)
             System.out.println("  Estimation du fond (Ouverture " + tailleES_Fond + "x" + tailleES_Fond + ")...");
             int[][] fondEstime = MorphoElementaire.ouverture(imageOriginaleNG, tailleES_Fond);
             if (fondEstime == null) throw new RuntimeException("Erreur pendant l'estimation du fond (ouverture).");
@@ -1213,10 +1092,10 @@ public class IsilImageProcessing extends javax.swing.JFrame implements ClicListe
 
             // 4. Seuillage de l'image corrigée
             // --> AJUSTER CE SEUIL MANUEL ou utiliser Otsu <--
-            int seuilManuel = 17; // Point de départ (le fond doit être proche de 0)
+            int seuilManuel = 21; // Point de départ (le fond doit être proche de 0)
             System.out.println("  Seuillage de l'image corrigée (Seuil=" + seuilManuel + ")...");
-            // int[][] outilsBinaires = Seuillage.seuillageAutomatique(imageCorrigee); // Option Otsu
-            int[][] outilsBinaires = Seuillage.seuillageSimple(imageCorrigee, seuilManuel); // Option Manuelle
+            int[][] outilsBinaires = Seuillage.seuillageAutomatique(imageCorrigee); // Option Otsu
+            //int[][] outilsBinaires = Seuillage.seuillageSimple(imageCorrigee, seuilManuel); // Option Manuelle
             if (outilsBinaires == null) throw new RuntimeException("Erreur pendant le seuillage.");
             // Sauvegarder pour debug
             CImageNG debugBinaireInitial = ImageUtils.matrixToCImageNG(outilsBinaires);
@@ -1266,158 +1145,53 @@ public class IsilImageProcessing extends javax.swing.JFrame implements ClicListe
     }
 
     //Execice 6
-
-    // DANS IsilImageProcessing.java
-// Assure-toi d'avoir les imports :
-// import java.awt.image.BufferedImage;
-// import java.awt.Graphics2D;
-// import java.awt.Color;
-// import javax.imageio.ImageIO;
-// import java.io.IOException;
-// import ImageProcessing.Seuillage.Seuillage;
-// import ImageProcessing.NonLineaire.MorphoElementaire;
-// import ImageProcessing.NonLineaire.MorphoComplexe; // Si tu utilises reconstruction
-// import ImageProcessing.Contours.ContoursNonLineaire;
-
     private void handleExercice6() {
         String operationName = "Exercice 6: Composition Vaisseau/Planète";
         String vaisseauFile = "vaisseaux.jpg";
         String planeteFile = "planete.jpg";
         String outputSubDir = BASE_RESULT_DIR + "ex6_composition_vaisseau/";
-        new File(outputSubDir).mkdirs(); // Crée le dossier
-        String outputSynthese1_path = outputSubDir + "synthese.png";
+        new File(outputSubDir).mkdirs();
         String outputSynthese2_path = outputSubDir + "synthese2.png";
-        // Chemins pour les images de débogage
-        String debugVaisseauBinaireNettoye_path = outputSubDir + "vaisseau_binaire_nettoye_debug.png";
-        String debugMarqueurGros_path = outputSubDir + "vaisseau_gros_marqueur_debug.png";
-        String debugGrosVaisseauBinaire_path = outputSubDir + "vaisseau_gros_reconstruit_debug.png";
-        String debugPetitVaisseauEtBruit_path = outputSubDir + "vaisseau_petit_et_bruit_debug.png";
-        String debugPetitVaisseauFinal_path = outputSubDir + "vaisseau_petit_masque_final_debug.png";
-        String debugContourBinaire_path = outputSubDir + "vaisseau_petit_contour_debug.png";
-
-
         File vaisseauInputFile = new File(vaisseauFile);
         File planeteInputFile = new File(planeteFile);
-
-        if (!vaisseauInputFile.exists()) { /* ... gestion erreur ... */ return; }
-        if (!planeteInputFile.exists()) { /* ... gestion erreur ... */ return; }
-
+        if (!vaisseauInputFile.exists() || !planeteInputFile.exists()) {
+            JOptionPane.showMessageDialog(this, "Fichiers introuvables.", "Erreur Fichier", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
         try {
-            // --- Partie 1: Créer le masque du petit vaisseau ---
-            System.out.println("Étape 1: Création du masque du petit vaisseau...");
-
-            // 1a. Charger vaisseaux.jpg (source RGB) ET convertir en NG [y][x] pour segmentation
-            System.out.println("  Chargement et conversion " + vaisseauFile + "...");
+            // --- Création du masque du petit vaisseau ---
+            System.out.println("Création du masque du petit vaisseau...");
+            long startTimeMasque = System.nanoTime();
             CImageRGB vaisseauxRGB_source = new CImageRGB(vaisseauInputFile);
             int[][] vaisseauxNG = ImageUtils.imageToGrayMatrix(vaisseauxRGB_source);
-            if (vaisseauxNG == null) throw new RuntimeException("Erreur conversion vaisseaux NG.");
-            int hauteurV_NG = vaisseauxNG.length;
-            int largeurV_NG = vaisseauxNG[0].length;
-
-            // 1b. Seuillage pour séparer vaisseaux du fond
-            System.out.println("  Seuillage vaisseaux...");
             int[][] vaisseauxBinaires = Seuillage.seuillageAutomatique(vaisseauxNG);
-            if (vaisseauxBinaires == null) throw new RuntimeException("Erreur seuillage vaisseaux.");
-
-            // 1c. Nettoyage initial (peut être commenté si ça dégrade trop)
-            System.out.println("  Nettoyage binaire initial (Fermeture 3x3)...");
             int[][] vaisseauxBinairesNettoyes = MorphoElementaire.fermeture(vaisseauxBinaires, 3);
-            if (vaisseauxBinairesNettoyes == null) vaisseauxBinairesNettoyes = vaisseauxBinaires;
-            // Sauvegarde debug
-            CImageNG debugImg1 = ImageUtils.matrixToCImageNG(vaisseauxBinairesNettoyes);
-            if (debugImg1 != null) debugImg1.enregistreFormatPNG(new File(debugVaisseauBinaireNettoye_path));
-
-
-            // --- ÉTAPE 1d CORRIGÉE : Séparer par Érosion + Reconstruction ---
-            // 1d-i. Créer un marqueur pour le GROS vaisseau en érodant fortement
-            // ---> AJUSTER CETTE TAILLE POUR TUER LE PETIT VAISSEAU ET LE TEXTE <---
-            int tailleES_MarqueurGros = 61; // EXEMPLE À AJUSTER (ex: 41, 51, 61, 71, 81...)
-            System.out.println("  Création marqueur gros vaisseau (Érosion " + tailleES_MarqueurGros + "x" + tailleES_MarqueurGros + ")...");
+            int tailleES_MarqueurGros = 61;
             int[][] marqueurGros = MorphoElementaire.erosion(vaisseauxBinairesNettoyes, tailleES_MarqueurGros);
-            if (marqueurGros == null)
-                throw new RuntimeException("Erreur pendant l'érosion pour marqueur gros vaisseau.");
-            // Sauvegarde debug
-            CImageNG debugImg2 = ImageUtils.matrixToCImageNG(marqueurGros);
-            if (debugImg2 != null) debugImg2.enregistreFormatPNG(new File(debugMarqueurGros_path));
-
-            // 1d-ii. Reconstruire le GROS vaisseau
-            System.out.println("  Reconstruction du gros vaisseau...");
             int[][] grosVaisseauBinaire = MorphoComplexe.reconstructionGeodesique(marqueurGros, vaisseauxBinairesNettoyes);
-            if (grosVaisseauBinaire == null)
-                throw new RuntimeException("Erreur pendant la reconstruction du gros vaisseau.");
-            // Sauvegarde debug
-            CImageNG debugImg3 = ImageUtils.matrixToCImageNG(grosVaisseauBinaire);
-            if (debugImg3 != null) debugImg3.enregistreFormatPNG(new File(debugGrosVaisseauBinaire_path));
-
-            // 1d-iii. Obtenir le PETIT vaisseau (et autres éléments non reconstruits) par soustraction
-            System.out.println("  Extraction masque petit vaisseau (Soustraction)...");
             int[][] petitVaisseauEtBruitBinaire = soustraireImagesBinaires(vaisseauxBinairesNettoyes, grosVaisseauBinaire);
-            if (petitVaisseauEtBruitBinaire == null) throw new RuntimeException("Erreur soustraction petit vaisseau.");
-            // Sauvegarde debug
-            CImageNG debugImg4 = ImageUtils.matrixToCImageNG(petitVaisseauEtBruitBinaire);
-            if (debugImg4 != null) debugImg4.enregistreFormatPNG(new File(debugPetitVaisseauEtBruit_path));
-
-            // 1d-iv. Nettoyer le masque du petit vaisseau (Ouverture pour supprimer texte/bruit)
-            // ---> AJUSTER CETTE TAILLE : > taille texte, < taille petit vaisseau <---
-            int tailleES_NettoyagePetit = 11; // EXEMPLE À AJUSTER (ex: 7, 9, 11, 13...)
-            System.out.println("  Nettoyage masque petit vaisseau (Ouverture " + tailleES_NettoyagePetit + "x" + tailleES_NettoyagePetit + ")...");
+            int tailleES_NettoyagePetit = 11;
             int[][] petitVaisseauBinaire = MorphoElementaire.ouverture(petitVaisseauEtBruitBinaire, tailleES_NettoyagePetit);
-            if (petitVaisseauBinaire == null) petitVaisseauBinaire = petitVaisseauEtBruitBinaire;
-            // Sauvegarde debug
-            CImageNG debugImg5 = ImageUtils.matrixToCImageNG(petitVaisseauBinaire);
-            if (debugImg5 != null) debugImg5.enregistreFormatPNG(new File(debugPetitVaisseauFinal_path));
+            long endTimeMasque = System.nanoTime();
+            double durationMilliMasque = (endTimeMasque - startTimeMasque) / 1_000_000.0;
+            System.out.println("Fin création masque. Durée: " + String.format("%.3f", durationMilliMasque) + " ms");
 
-
-            // --- Partie 2: Copier/Coller via BufferedImage ---
-            System.out.println("Étape 2: Copier/Coller le vaisseau via BufferedImage...");
-            // ... (code de chargement planeteRGB_cible, biPlanete, biVaisseaux - INCHANGÉ) ...
-            // ... (code de création biSynthese1 et copie planète - INCHANGÉ) ...
-            // ... (code de collage du vaisseau avec getRGB/setRGB - INCHANGÉ) ...
-            // ... (code de sauvegarde de synthese1.png - INCHANGÉ) ...
-            // Pour la concision, je ne répète pas tout le bloc, il était correct.
-
-            // --- Partie 3: Ajouter le contour rouge ---
-            System.out.println("Étape 3: Ajout du contour rouge...");
-            // ... (code de calcul contourBinaire avec gradientBeucher - INCHANGÉ) ...
-            // [Sauvegarde debug pour contourBinaire]
-            int[][] contourBinaire = null;
-            CImageNG debugContour = ImageUtils.matrixToCImageNG(contourBinaire);
-            if (debugContour != null) debugContour.enregistreFormatPNG(new File(debugContourBinaire_path));
-            // ... (code de dessin du contour sur biSynthese1 - INCHANGÉ) ...
-            // ... (code de sauvegarde de synthese2.png - INCHANGÉ) ...
-
-            // --- Partie 4: Affichage et Fin ---
-            System.out.println("Affichage de synthese2.png (avec contour)...");
-            // ... (Code de création CImageRGB tempSyntheseRGB et affichage via updateImageDisplay - INCHANGÉ) ...
-            // ... (Code JOptionPane final - INCHANGÉ) ...
-
-            // Pour que le code complet tienne, je vais juste remettre les blocs qui étaient déjà longs :
-            // (Le code ci-dessous est à insérer dans les "..." correspondants ci-dessus)
-
-            // --- REPRISE Partie 2 ---
-            System.out.println("  Chargement images originales (pour BufferedImage)...");
-            // vaisseauxRGB_source est déjà chargé
+            // --- Copier/Coller via BufferedImage ---
+            System.out.println("Copier/Coller du vaisseau...");
+            long startTimeCollage = System.nanoTime();
             CImageRGB planeteRGB_cible = new CImageRGB(planeteInputFile);
             BufferedImage biVaisseaux = vaisseauxRGB_source.getImage();
             BufferedImage biPlanete = planeteRGB_cible.getImage();
-            if (biVaisseaux == null || biPlanete == null) throw new RuntimeException("Erreur: BufferedImage null.");
-
             int hauteurP = biPlanete.getHeight();
             int largeurP = biPlanete.getWidth();
             int hauteurV_BI = biVaisseaux.getHeight();
             int largeurV_BI = biVaisseaux.getWidth();
-
-            System.out.println("  Création BufferedImage résultat (copie planète)...");
             BufferedImage biSynthese1 = new BufferedImage(largeurP, hauteurP, BufferedImage.TYPE_INT_ARGB);
             Graphics2D g2d = biSynthese1.createGraphics();
             g2d.drawImage(biPlanete, 0, 0, null);
             g2d.dispose();
-            System.out.println("  Copie planète terminée.");
-
-            System.out.println("  Collage du vaisseau (rapide)...");
-            int yMax = Math.min(hauteurV_NG, hauteurP);
-            int xMax = Math.min(largeurV_NG, largeurP);
-
+            int yMax = Math.min(vaisseauxNG.length, hauteurP);
+            int xMax = Math.min(vaisseauxNG[0].length, largeurP);
             for (int y = 0; y < yMax; y++) {
                 for (int x = 0; x < xMax; x++) {
                     if (y < petitVaisseauBinaire.length && x < petitVaisseauBinaire[0].length && petitVaisseauBinaire[y][x] == 255) {
@@ -1428,66 +1202,46 @@ public class IsilImageProcessing extends javax.swing.JFrame implements ClicListe
                     }
                 }
             }
-            System.out.println("  Collage du vaisseau terminé.");
-            ImageIO.write(biSynthese1, "png", new File(outputSynthese1_path));
-            System.out.println("Résultat (sans contour) sauvegardé: " + outputSynthese1_path);
+            long endTimeCollage = System.nanoTime();
+            double durationMilliCollage = (endTimeCollage - startTimeCollage) / 1_000_000.0;
+            System.out.println("Fin collage. Durée: " + String.format("%.3f", durationMilliCollage) + " ms");
 
-            // Afficher synthese1 dans une fenêtre
-            final BufferedImage finalBiSynthese1 = ImageIO.read(new File(outputSynthese1_path)); // Recharger pour être sûr
-            SwingUtilities.invokeLater(() -> new ResultViewerFrame(finalBiSynthese1, "Synthèse (Sans Contour)").display());
-
-
-            // --- REPRISE Partie 3 ---
-            System.out.println("  Calcul du contour du masque...");
-            contourBinaire = ContoursNonLineaire.gradientBeucher(petitVaisseauBinaire);
-            if (contourBinaire == null) throw new RuntimeException("Erreur calcul contour.");
-            // Sauvegarde debug
-            CImageNG debugImg6 = ImageUtils.matrixToCImageNG(contourBinaire);
-            if (debugImg6 != null) debugImg6.enregistreFormatPNG(new File(debugContourBinaire_path));
-
-            System.out.println("  Dessin du contour (rapide)...");
+            // --- Ajout du contour rouge ---
+            System.out.println("Ajout du contour rouge...");
+            long startTimeContour = System.nanoTime();
+            int[][] contourBinaire = ContoursNonLineaire.gradientBeucher(petitVaisseauBinaire);
             int redRGB = Color.RED.getRGB();
             for (int y = 0; y < yMax; y++) {
                 for (int x = 0; x < xMax; x++) {
                     if (y < contourBinaire.length && x < contourBinaire[0].length && contourBinaire[y][x] == 255) {
                         if (x < largeurP && y < hauteurP) {
-                            biSynthese1.setRGB(x, y, redRGB); // Dessine sur biSynthese1 qui contient déjà le vaisseau
+                            biSynthese1.setRGB(x, y, redRGB);
                         }
                     }
                 }
             }
-            System.out.println("  Dessin contour terminé.");
+            long endTimeContour = System.nanoTime();
+            double durationMilliContour = (endTimeContour - startTimeContour) / 1_000_000.0;
+            System.out.println("Fin contour. Durée: " + String.format("%.3f", durationMilliContour) + " ms");
+
             ImageIO.write(biSynthese1, "png", new File(outputSynthese2_path));
-            System.out.println("Résultat (avec contour) sauvegardé: " + outputSynthese2_path);
-
-            // --- REPRISE Partie 4 ---
-            System.out.println("Affichage de synthese2.png (avec contour)...");
-            final BufferedImage finalBiSynthese2 = ImageIO.read(new File(outputSynthese2_path)); // Recharger pour affichage
+            final BufferedImage finalBiSynthese2 = ImageIO.read(new File(outputSynthese2_path));
             SwingUtilities.invokeLater(() -> new ResultViewerFrame(finalBiSynthese2, "Synthèse (Avec Contour Rouge)").display());
-
-            // Mettre à jour l'affichage principal (optionnel, ici avec la version avec contour NG)
             CImageRGB tempSyntheseRGB_pourAffichagePrincipal = new CImageRGB(largeurP, hauteurP, 0, 0, 0);
             Graphics g = tempSyntheseRGB_pourAffichagePrincipal.getContexte();
             if (g != null) g.drawImage(finalBiSynthese2, 0, 0, null);
-            else throw new RuntimeException("Contexte graphique null pour affichage principal.");
-
             CImageNG synthese2AffichagePrincipal = ImageUtils.matrixToCImageNG(ImageUtils.imageToGrayMatrix(tempSyntheseRGB_pourAffichagePrincipal));
-            if (synthese2AffichagePrincipal != null) {
-                updateImageDisplay(synthese2AffichagePrincipal);
-            }
-
+            if (synthese2AffichagePrincipal != null) updateImageDisplay(synthese2AffichagePrincipal);
             JOptionPane.showMessageDialog(this,
                     "Composition terminée.\n" +
-                            "Originale et résultats sauvegardés et affichés.",
+                            "Création masque: " + String.format("%.3f", durationMilliMasque) + " ms\n" +
+                            "Collage: " + String.format("%.3f", durationMilliCollage) + " ms\n" +
+                            "Contour: " + String.format("%.3f", durationMilliContour) + " ms\n" +
+                            "Résultat sauvegardé.",
                     operationName, JOptionPane.INFORMATION_MESSAGE);
-
-        } catch (CImageRGBException | IOException exIO) {
-            JOptionPane.showMessageDialog(this, "Erreur I/O ou CImage: " + exIO.getMessage(), "Erreur Fichier/Image", JOptionPane.ERROR_MESSAGE);
-            handleProcessingError(operationName, exIO);
-        } catch (Exception ex) {
-            handleProcessingError(operationName, ex);
-        }
+        } catch (Exception ex) { handleProcessingError(operationName, ex); }
     }
+
 
 
     /// Exo 7
@@ -1496,111 +1250,93 @@ public class IsilImageProcessing extends javax.swing.JFrame implements ClicListe
 
     private void handleExercice7() {
         String operationName = "Exercice 7: Contours Tartines";
-        String filename = "Tartines.jpg"; // Nom de fichier imposé
+        String filename = "Tartines.jpg";
         String outputSubDir = BASE_RESULT_DIR + "ex7_tartines_contours/";
-        new File(outputSubDir).mkdirs(); // Crée le dossier
-        String outputContoursBinaire_path = outputSubDir + "tartines_contours_binaire_debug.png";
+        new File(outputSubDir).mkdirs();
         String outputFinal_path = outputSubDir + "Tartines_avec_contours.png";
-
         File inputFile = new File(filename);
         if (!inputFile.exists()) {
             JOptionPane.showMessageDialog(this, "Le fichier '" + filename + "' est introuvable.", "Erreur Fichier", JOptionPane.ERROR_MESSAGE);
             return;
         }
-
         try {
-            // 1. Charger l'image originale (RGB) et la convertir en NG pour traitement
             System.out.println("Chargement et conversion de " + filename + "...");
-            CImageRGB tartinesRGB_Orig_PourDessin = new CImageRGB(inputFile); // Garder pour dessiner dessus
-            CImageRGB tartinesRGB_Orig_PourAffichage = new CImageRGB(inputFile); // Copie pour affichage original
+            CImageRGB tartinesRGB_Orig_PourDessin = new CImageRGB(inputFile);
+            CImageRGB tartinesRGB_Orig_PourAffichage = new CImageRGB(inputFile);
             int[][] tartinesNG = ImageUtils.imageToGrayMatrix(tartinesRGB_Orig_PourDessin);
-            if (tartinesNG == null) throw new RuntimeException("Erreur conversion image NG.");
-
-            originalImageMatrix = ImageUtils.cloneMatrix(tartinesNG); // Pour "revenir"
+            originalImageMatrix = ImageUtils.cloneMatrix(tartinesNG);
             updateRevenirOriginalMenuState();
-
-            // Afficher l'originale
             final CImageRGB finalOriginalRGB = tartinesRGB_Orig_PourAffichage;
             SwingUtilities.invokeLater(() -> new ResultViewerFrame(finalOriginalRGB, "Originale: " + filename).display());
-
             int hauteur = tartinesNG.length;
             int largeur = tartinesNG[0].length;
 
-            // 1b. Lissage initial (Optionnel, mais recommandé pour réduire le bruit/texture)
-            int tailleFiltreMoyenneur = 5; // Ou 5 si la texture est forte
-            System.out.println("  Lissage initial (Moyenneur " + tailleFiltreMoyenneur + "x" + tailleFiltreMoyenneur + ")...");
+            // --- Lissage initial ---
+            System.out.println("Lissage initial (Moyenneur)...");
+            long startTimeLissage = System.nanoTime();
+            int tailleFiltreMoyenneur = 5;
             int[][] tartinesNG_Lisse = FiltrageLineaireLocal.filtreMoyenneur(tartinesNG, tailleFiltreMoyenneur);
-            if (tartinesNG_Lisse == null) tartinesNG_Lisse = tartinesNG; // Fallback
+            long endTimeLissage = System.nanoTime();
+            double durationMilliLissage = (endTimeLissage - startTimeLissage) / 1_000_000.0;
+            System.out.println("Fin lissage. Durée: " + String.format("%.3f", durationMilliLissage) + " ms");
 
-            // 2. Détection des contours (Gradient de Beucher est un bon choix)
-            System.out.println("  Détection des contours (Gradient Beucher)...");
-            int[][] contoursNG = ContoursNonLineaire.gradientBeucher(tartinesNG_Lisse); // Utiliser l'image lissée
-            if (contoursNG == null) throw new RuntimeException("Erreur calcul gradient Beucher.");
+            // --- Détection des contours ---
+            System.out.println("Détection des contours (Gradient Beucher)...");
+            long startTimeContours = System.nanoTime();
+            int[][] contoursNG = ContoursNonLineaire.gradientBeucher(tartinesNG_Lisse);
+            long endTimeContours = System.nanoTime();
+            double durationMilliContours = (endTimeContours - startTimeContours) / 1_000_000.0;
+            System.out.println("Fin détection contours. Durée: " + String.format("%.3f", durationMilliContours) + " ms");
 
-            // 3. Binarisation des contours (pour des lignes plus nettes)
-            // --> AJUSTER LE SEUIL SI NÉCESSAIRE <---
-            int seuilContour = 50; // Seuil plus élevé pour ignorer la texture/reflets faibles
-            System.out.println("  Binarisation des contours (Seuil=" + seuilContour + ")...");
+            // --- Binarisation des contours ---
+            System.out.println("Binarisation des contours...");
+            long startTimeBinarisation = System.nanoTime();
+            int seuilContour = 50;
             int[][] contoursBinaires = Seuillage.seuillageSimple(contoursNG, seuilContour);
-            if (contoursBinaires == null) throw new RuntimeException("Erreur seuillage contours.");
-            // Sauvegarder les contours binaires pour debug
-            CImageNG contoursBinImg = ImageUtils.matrixToCImageNG(contoursBinaires);
-            if (contoursBinImg != null) contoursBinImg.enregistreFormatPNG(new File(outputContoursBinaire_path));
+            long endTimeBinarisation = System.nanoTime();
+            double durationMilliBinarisation = (endTimeBinarisation - startTimeBinarisation) / 1_000_000.0;
+            System.out.println("Fin binarisation. Durée: " + String.format("%.3f", durationMilliBinarisation) + " ms");
 
-
-            // 4. Tracer les contours en vert sur l'image originale RGB
-            System.out.println("  Traçage des contours en vert...");
-            Color couleurContour = Color.GREEN;
-
-            // Utiliser la BufferedImage de l'originale pour dessiner plus vite
+            // --- Traçage des contours ---
+            System.out.println("Traçage des contours en vert...");
+            long startTimeTracage = System.nanoTime();
             BufferedImage biTartinesAvecContours = new BufferedImage(largeur, hauteur, BufferedImage.TYPE_INT_ARGB);
             Graphics2D g2d = biTartinesAvecContours.createGraphics();
-            g2d.drawImage(tartinesRGB_Orig_PourDessin.getImage(), 0, 0, null); // Copie de l'originale
+            g2d.drawImage(tartinesRGB_Orig_PourDessin.getImage(), 0, 0, null);
             g2d.dispose();
-
-            int greenRGB = couleurContour.getRGB();
+            int greenRGB = Color.GREEN.getRGB();
             for (int y = 0; y < hauteur; y++) {
                 for (int x = 0; x < largeur; x++) {
                     if (y < contoursBinaires.length && x < contoursBinaires[0].length && contoursBinaires[y][x] == 255) {
-                        if (x < largeur && y < hauteur) { // Double check des limites
+                        if (x < largeur && y < hauteur) {
                             biTartinesAvecContours.setRGB(x, y, greenRGB);
                         }
                     }
                 }
             }
+            long endTimeTracage = System.nanoTime();
+            double durationMilliTracage = (endTimeTracage - startTimeTracage) / 1_000_000.0;
+            System.out.println("Fin traçage. Durée: " + String.format("%.3f", durationMilliTracage) + " ms");
 
-            // 5. Sauvegarder le résultat final
-            System.out.println("  Sauvegarde " + outputFinal_path + "...");
             ImageIO.write(biTartinesAvecContours, "png", new File(outputFinal_path));
-
-
-            // 6. Afficher le résultat et informer
-            System.out.println("Affichage du résultat avec contours...");
-            final BufferedImage finalResultBi = ImageIO.read(new File(outputFinal_path)); // Recharger pour affichage
+            final BufferedImage finalResultBi = ImageIO.read(new File(outputFinal_path));
             SwingUtilities.invokeLater(() -> new ResultViewerFrame(finalResultBi, "Tartines avec Contours Verts").display());
-
-            // Mettre à jour l'affichage principal avec la version NG du résultat
-            CImageRGB tempResultRGB = new CImageRGB(largeur, hauteur, 0,0,0); // Pour conversion
+            CImageRGB tempResultRGB = new CImageRGB(largeur, hauteur, 0, 0, 0);
             Graphics gTemp = tempResultRGB.getContexte();
-            if (gTemp != null) gTemp.drawImage(finalResultBi, 0,0,null);
-
+            if (gTemp != null) gTemp.drawImage(finalResultBi, 0, 0, null);
             CImageNG resultatFinalNG = ImageUtils.matrixToCImageNG(ImageUtils.imageToGrayMatrix(tempResultRGB));
-            if (resultatFinalNG != null) {
-                updateImageDisplay(resultatFinalNG);
-            }
-
+            if (resultatFinalNG != null) updateImageDisplay(resultatFinalNG);
             JOptionPane.showMessageDialog(this,
                     "Détection et tracé des contours terminés.\n" +
-                            "Originale et résultat sauvegardés et affichés.",
+                            "Lissage: " + String.format("%.3f", durationMilliLissage) + " ms\n" +
+                            "Détection contours: " + String.format("%.3f", durationMilliContours) + " ms\n" +
+                            "Binarisation: " + String.format("%.3f", durationMilliBinarisation) + " ms\n" +
+                            "Traçage: " + String.format("%.3f", durationMilliTracage) + " ms\n" +
+                            "Résultat sauvegardé.",
                     operationName, JOptionPane.INFORMATION_MESSAGE);
-
-        } catch (CImageRGBException | IOException exIO) {
-            JOptionPane.showMessageDialog(this, "Erreur I/O ou CImage: " + exIO.getMessage(), "Erreur Fichier/Image", JOptionPane.ERROR_MESSAGE);
-            handleProcessingError(operationName, exIO);
-        } catch (Exception ex) {
-            handleProcessingError(operationName, ex);
-        }
+        } catch (Exception ex) { handleProcessingError(operationName, ex); }
     }
+
     // Assurez-vous que les méthodes soustraireImagesBinaires, updateImageDisplay, handleProcessingError,
     // ImageUtils.*, Seuillage.*, MorphoElementaire.*, ContoursNonLineaire.* existent et fonctionnent.
     // La méthode transposeMatrix n'est pas explicitement nécessaire ici si on utilise getPixel/setPixel
